@@ -172,14 +172,14 @@ class CrossyDriveView(context: Context) : View(context) {
     private var bestMeters = prefs.getInt("best_meters", 0)
     private var distanceMeters = 0f
 
-    // 도로 설정 (5차선)
-    private val laneCount = 5
+    // 도로 설정 (6차선)
+    private val laneCount = 6
     private var roadLeft = 0f
     private var roadRight = 0f
     private var laneWidth = 0f
 
     // 플레이어 차량 상태
-    private var targetLane = 2 // 0 ~ 4 (가운데 2번)
+    private var targetLane = 2 // 0 ~ 5 (시작 차선)
     private var playerX = 0f
     private var playerY = 0f
     private var playerWidth = 0f
@@ -237,7 +237,7 @@ class CrossyDriveView(context: Context) : View(context) {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        val roadWidth = w * 0.78f
+        val roadWidth = w * 0.82f
         roadLeft = (w - roadWidth) / 2f
         roadRight = roadLeft + roadWidth
         laneWidth = roadWidth / laneCount
@@ -428,8 +428,8 @@ class CrossyDriveView(context: Context) : View(context) {
                 )
             }
         } else {
-            // 일반 도로: 1~3개 차선에 장애물 또는 다른 차량 배치 (최소 2개 차선은 반드시 비워둠)
-            val maxObstacles = if (distanceMeters > 200f) 3 else 2
+            // 일반 도로: 1~4개 차선에 장애물 또는 다른 차량 배치 (빈 차선 확보)
+            val maxObstacles = if (distanceMeters > 200f) 4 else 3
             val count = Random.nextInt(1, maxObstacles + 1)
             val chosenLanes = (0 until laneCount).shuffled().take(count)
 
@@ -493,19 +493,15 @@ class CrossyDriveView(context: Context) : View(context) {
     // --- 렌더링 (길건너 친구들풍 복셀 입체감) ---
 
     private fun drawEnvironment(canvas: Canvas) {
-        // 양옆 잔디밭 배경
         canvas.drawColor(Color.parseColor("#7CB342"))
 
-        // 연석(인도) 테두리
         val curbWidth = 22f
         paint.color = Color.parseColor("#CFD8DC")
         canvas.drawRect(roadLeft - curbWidth, 0f, roadRight + curbWidth, height.toFloat(), paint)
 
-        // 아스팔트 도로
         paint.color = Color.parseColor("#37474F")
         canvas.drawRect(roadLeft, 0f, roadRight, height.toFloat(), paint)
 
-        // 차선 점선 스크롤
         paint.color = Color.parseColor("#90A4AE")
         val dashLen = 65f
         val gapLen = 55f
@@ -550,19 +546,15 @@ class CrossyDriveView(context: Context) : View(context) {
         val top = cy - h / 2f
         val depth = 12f
 
-        // 그림자
         paint.color = Color.argb(80, 0, 0, 0)
         canvas.drawRect(left + 8f, top + 10f, left + w + 8f, top + h + 10f, paint)
 
-        // 입체 하단 측면
         paint.color = Color.parseColor("#BF360C")
         canvas.drawRect(left, top + depth, left + w, top + h + depth, paint)
 
-        // 상단 주황 바리케이드 본체
         paint.color = Color.parseColor("#FF6D00")
         canvas.drawRect(left, top, left + w, top + h, paint)
 
-        // 흰색 경고 줄무늬
         paint.color = Color.WHITE
         canvas.drawRect(left + w * 0.2f, top, left + w * 0.38f, top + h, paint)
         canvas.drawRect(left + w * 0.62f, top, left + w * 0.8f, top + h, paint)
@@ -575,19 +567,15 @@ class CrossyDriveView(context: Context) : View(context) {
             val cx = ped.x
             val cy = ped.y - bounce
 
-            // 그림자
             paint.color = Color.argb(85, 0, 0, 0)
             canvas.drawOval(cx - s * 0.55f, ped.y - s * 0.25f, cx + s * 0.55f, ped.y + s * 0.35f, paint)
 
-            // 몸통 (블록 형태)
             paint.color = ped.shirtColor
             canvas.drawRect(cx - s * 0.42f, cy - s * 0.35f, cx + s * 0.42f, cy + s * 0.35f, paint)
 
-            // 머리 (살구색 복셀 블록)
             paint.color = Color.parseColor("#FFCCBC")
             canvas.drawRect(cx - s * 0.32f, cy - s * 0.72f, cx + s * 0.32f, cy - s * 0.22f, paint)
 
-            // 머리카락 상단
             paint.color = Color.parseColor("#3E2723")
             canvas.drawRect(cx - s * 0.32f, cy - s * 0.78f, cx + s * 0.32f, cy - s * 0.56f, paint)
         }
@@ -619,7 +607,6 @@ class CrossyDriveView(context: Context) : View(context) {
         val top = cy - h / 2f
         val depth = 16f
 
-        // 바닥 그림자
         paint.color = Color.argb(90, 0, 0, 0)
         canvas.drawRoundRect(
             left + 10f,
@@ -629,7 +616,6 @@ class CrossyDriveView(context: Context) : View(context) {
             12f, 12f, paint
         )
 
-        // 타이어 4개
         paint.color = Color.parseColor("#212121")
         val tireW = w * 0.14f
         val tireH = h * 0.20f
@@ -638,30 +624,24 @@ class CrossyDriveView(context: Context) : View(context) {
         canvas.drawRect(left - tireW * 0.6f, top + h * 0.65f, left + tireW * 0.4f, top + h * 0.65f + tireH, paint)
         canvas.drawRect(left + w - tireW * 0.4f, top + h * 0.65f, left + w + tireW * 0.6f, top + h * 0.65f + tireH, paint)
 
-        // 차체 입체 측면 (어두운 톤)
         paint.color = darkenColor(bodyColor, 0.72f)
         canvas.drawRoundRect(left, top + depth, left + w, top + h + depth, 12f, 12f, paint)
 
-        // 차체 상단 메인 컬러
         paint.color = bodyColor
         canvas.drawRoundRect(left, top, left + w, top + h, 12f, 12f, paint)
 
-        // 앞유리창
         paint.color = Color.parseColor("#263238")
         canvas.drawRect(left + w * 0.16f, top + h * 0.22f, left + w * 0.84f, top + h * 0.42f, paint)
 
-        // 지붕 (밝은 톤 하이라이트)
         paint.color = lightenColor(bodyColor, 1.15f)
         canvas.drawRect(left + w * 0.18f, top + h * 0.42f, left + w * 0.82f, top + h * 0.72f, paint)
 
-        // 전조등 (헤드라이트)
         paint.color = Color.parseColor("#FFF59D")
         canvas.drawRect(left + w * 0.14f, top + 4f, left + w * 0.34f, top + 14f, paint)
         canvas.drawRect(left + w * 0.66f, top + 4f, left + w * 0.86f, top + 14f, paint)
     }
 
     private fun drawHUD(canvas: Canvas) {
-        // 상단 거리 표시
         paint.textAlign = Paint.Align.CENTER
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
@@ -675,14 +655,12 @@ class CrossyDriveView(context: Context) : View(context) {
         paint.color = Color.parseColor("#FFF59D")
         canvas.drawText("BEST: ${bestMeters} m  |  SPEED Lv.$speedLevel", width / 2f, 180f, paint)
 
-        // 50m 돌파 시 가속 안내 배너
         if (speedUpBannerTime > 0f && state == GameState.PLAYING) {
             paint.textSize = 44f
             paint.color = Color.parseColor("#FF7043")
             canvas.drawText("SPEED UP!", width / 2f, 245f, paint)
         }
 
-        // 시작 대기 또는 게임 오버 오버레이
         if (state != GameState.PLAYING) {
             paint.color = Color.argb(145, 0, 0, 0)
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
