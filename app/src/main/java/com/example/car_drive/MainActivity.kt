@@ -2,11 +2,22 @@ package com.example.car_drive
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.*
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
 import android.view.Window
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -14,10 +25,117 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 class MainActivity : Activity() {
+
+    private val githubUser = "SBUINNG"
+    private val githubRepo = "Car_drive"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(CrossyDriveView(this))
+
+        // 앱 시작 시 자동으로 GitHub 최신 버전 확인 및 업데이트 다운로드
+        autoCheckAndInstallUpdate()
+    }
+
+    private fun autoCheckAndInstallUpdate() {
+        Thread {
+            try {
+                val url = URL("https://api.github.com/repos/$githubUser/$githubRepo/releases/latest")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    setRequestProperty("User-Agent", "CarDrive-AutoUpdater")
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                }
+
+                if (conn.responseCode == 200) {
+                    val response = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(response)
+                    val latestTag = json.getString("tag_name").removePrefix("v").trim()
+
+                    var apkUrl: String? = null
+                    val assets = json.getJSONArray("assets")
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        if (asset.getString("name").endsWith(".apk")) {
+                            apkUrl = asset.getString("browser_download_url")
+                            break
+                        }
+                    }
+
+                    val currentVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
+
+                    if (apkUrl != null && isNewerVersion(latestTag, currentVersion)) {
+                        runOnUiThread {
+                            Toast.makeText(this, "새 업데이트(v$latestTag) 다운로드 중...", Toast.LENGTH_SHORT).show()
+                        }
+                        downloadAndInstallApk(apkUrl, latestTag)
+                    }
+                }
+                conn.disconnect()
+            } catch (_: Exception) {
+            }
+        }.start()
+    }
+
+    private fun downloadAndInstallApk(apkUrl: String, version: String) {
+        try {
+            val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "CarDrive-AutoUpdater")
+                connectTimeout = 10000
+                readTimeout = 20000
+            }
+
+            val apkFile = File(cacheDir, "update_v$version.apk")
+            if (apkFile.exists()) apkFile.delete()
+
+            conn.inputStream.use { input ->
+                FileOutputStream(apkFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            conn.disconnect()
+
+            runOnUiThread {
+                launchApkInstaller(apkFile)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun launchApkInstaller(apkFile: File) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            Toast.makeText(this, "자동 업데이트를 위해 '이 출처 허용'을 켜주세요.", Toast.LENGTH_LONG).show()
+            val permIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(permIntent)
+            return
+        }
+
+        val apkUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(installIntent)
+    }
+
+    private fun isNewerVersion(latest: String, current: String): Boolean {
+        val latestParts = latest.split(".").map { it.toIntOrNull() ?: 0 }
+        val currentParts = current.split(".").map { it.toIntOrNull() ?: 0 }
+        val maxLen = maxOf(latestParts.size, currentParts.size)
+        for (i in 0 until maxLen) {
+            val l = latestParts.getOrElse(i) { 0 }
+            val c = currentParts.getOrElse(i) { 0 }
+            if (l > c) return true
+            if (l < c) return false
+        }
+        return false
     }
 }
 
