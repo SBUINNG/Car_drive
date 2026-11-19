@@ -36,7 +36,6 @@ class MainActivity : Activity() {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(CrossyDriveView(this))
 
-        // 앱 시작 시 최신 버전 확인 후 사용자에게 업데이트 여부 질문
         autoCheckUpdate()
     }
 
@@ -121,6 +120,8 @@ class MainActivity : Activity() {
             }
             conn.disconnect()
 
+            if (!apkFile.exists() || apkFile.length() <= 0L) return
+
             runOnUiThread {
                 launchApkInstaller(apkFile)
             }
@@ -142,7 +143,6 @@ class MainActivity : Activity() {
         val installIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(apkUri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(installIntent)
     }
@@ -163,53 +163,44 @@ class MainActivity : Activity() {
 
 class CrossyDriveView(context: Context) : View(context) {
 
-    // 게임 상태
     private enum class GameState { READY, PLAYING, GAME_OVER }
     private var state = GameState.READY
 
-    // 기록 저장
     private val prefs = context.getSharedPreferences("crossy_drive_prefs", Context.MODE_PRIVATE)
     private var bestMeters = prefs.getInt("best_meters", 0)
     private var distanceMeters = 0f
 
-    // 도로 설정 (6차선)
     private val laneCount = 6
     private var roadLeft = 0f
     private var roadRight = 0f
     private var laneWidth = 0f
 
-    // 플레이어 차량 상태
-    private var targetLane = 2 // 0 ~ 5 (시작 차선)
+    private var targetLane = 2
     private var playerX = 0f
     private var playerY = 0f
     private var playerWidth = 0f
     private var playerHeight = 0f
-    private var hopAnim = 0f // 차선 변경 시 통통 튀는 애니메이션 값 (0~1)
+    private var hopAnim = 0f
 
-    // 주행 속도 및 단계 가속 상태 (50m마다 상승)
     private var currentSpeed = 650f
     private var speedLevel = 1
     private var speedUpBannerTime = 0f
 
-    // 터치 입력 상태
     private var touchDownX = 0f
     private var movedInCurrentTouch = false
 
-    // 스크롤 및 스폰 관리
     private var roadScrollY = 0f
     private var nextSpawnY = -200f
     private var rowCounter = 0
 
-    // 화면 흔들림 (충돌 연출)
     private var shakeTime = 0f
 
-    // 데이터 모델
     private data class Obstacle(
         var x: Float,
         var y: Float,
         val width: Float,
         val height: Float,
-        val speedY: Float, // 0이면 고정 장애물(바리케이드), >0이면 주행 차량
+        val speedY: Float,
         val color: Int,
         val isBarricade: Boolean
     )
@@ -218,7 +209,7 @@ class CrossyDriveView(context: Context) : View(context) {
         var x: Float,
         var y: Float,
         val size: Float,
-        var speedX: Float, // 좌우 횡단 속도
+        var speedX: Float,
         val shirtColor: Int,
         var walkPhase: Float
     )
@@ -268,7 +259,6 @@ class CrossyDriveView(context: Context) : View(context) {
         rowCounter = 0
         shakeTime = 0f
 
-        // 초반 도로 미리 채우기
         while (nextSpawnY > -height) {
             spawnNextRow()
         }
@@ -307,7 +297,6 @@ class CrossyDriveView(context: Context) : View(context) {
     }
 
     private fun updateGame(dt: Float) {
-        // 50m마다 속도 단계 상승
         val newLevel = (distanceMeters.toInt() / 50) + 1
         if (newLevel > speedLevel) {
             speedLevel = newLevel
@@ -326,23 +315,19 @@ class CrossyDriveView(context: Context) : View(context) {
         roadScrollY += dy
         nextSpawnY += dy
 
-        // 주행 거리(m) 누적
         val pixelsPerMeter = height * 0.055f
         distanceMeters += dy / pixelsPerMeter
 
-        // 플레이어 차선 부드러운 이동 & 호핑 애니메이션
         val desiredX = getLaneCenterX(targetLane)
         playerX += (desiredX - playerX) * min(1f, dt * 18f)
         if (hopAnim > 0f) {
             hopAnim = max(0f, hopAnim - dt * 4.5f)
         }
 
-        // 새로운 도로 패턴 생성
         while (nextSpawnY > -250f) {
             spawnNextRow()
         }
 
-        // 횡단보도 이동
         val cwIter = crosswalks.iterator()
         while (cwIter.hasNext()) {
             val cw = cwIter.next()
@@ -350,7 +335,6 @@ class CrossyDriveView(context: Context) : View(context) {
             if (cw.y > height + 200f) cwIter.remove()
         }
 
-        // 장애물 및 차량 이동 & 충돌 판정
         val obsIter = obstacles.iterator()
         while (obsIter.hasNext()) {
             val obs = obsIter.next()
@@ -366,7 +350,6 @@ class CrossyDriveView(context: Context) : View(context) {
             }
         }
 
-        // 보행자 횡단 이동 & 충돌 판정
         val pedIter = pedestrians.iterator()
         while (pedIter.hasNext()) {
             val ped = pedIter.next()
@@ -374,7 +357,6 @@ class CrossyDriveView(context: Context) : View(context) {
             ped.x += ped.speedX * dt
             ped.walkPhase += dt * 12f
 
-            // 인도 끝에 닿으면 반대 방향으로 되돌아감
             if (ped.x < roadLeft - laneWidth * 0.3f) {
                 ped.x = roadLeft - laneWidth * 0.3f
                 ped.speedX = abs(ped.speedX)
@@ -400,7 +382,6 @@ class CrossyDriveView(context: Context) : View(context) {
         val rowGap = playerHeight * Random.nextFloat().let { 1.75f + it * 0.65f }
         nextSpawnY -= rowGap
 
-        // 4번째 줄마다 횡단보도 + 보행자 생성
         if (rowCounter % 4 == 0) {
             val cwHeight = laneWidth * 0.9f
             crosswalks.add(Crosswalk(nextSpawnY, cwHeight))
@@ -428,7 +409,6 @@ class CrossyDriveView(context: Context) : View(context) {
                 )
             }
         } else {
-            // 일반 도로: 1~4개 차선에 장애물 또는 다른 차량 배치 (빈 차선 확보)
             val maxObstacles = if (distanceMeters > 200f) 4 else 3
             val count = Random.nextInt(1, maxObstacles + 1)
             val chosenLanes = (0 until laneCount).shuffled().take(count)
@@ -489,8 +469,6 @@ class CrossyDriveView(context: Context) : View(context) {
             prefs.edit().putInt("best_meters", bestMeters).apply()
         }
     }
-
-    // --- 렌더링 (길건너 친구들풍 복셀 입체감) ---
 
     private fun drawEnvironment(canvas: Canvas) {
         canvas.drawColor(Color.parseColor("#7CB342"))
