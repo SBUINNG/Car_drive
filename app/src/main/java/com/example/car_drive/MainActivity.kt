@@ -1,6 +1,7 @@
 package com.example.car_drive
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.*
@@ -28,17 +29,18 @@ class MainActivity : Activity() {
 
     private val githubUser = "SBUINNG"
     private val githubRepo = "Car_drive"
+    private var isUpdateDialogShown = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(CrossyDriveView(this))
 
-        // 앱 시작 시 자동으로 GitHub 최신 버전 확인 및 업데이트 다운로드
-        autoCheckAndInstallUpdate()
+        // 앱 시작 시 최신 버전 확인 후 사용자에게 업데이트 여부 질문
+        autoCheckUpdate()
     }
 
-    private fun autoCheckAndInstallUpdate() {
+    private fun autoCheckUpdate() {
         Thread {
             try {
                 val url = URL("https://api.github.com/repos/$githubUser/$githubRepo/releases/latest")
@@ -69,15 +71,35 @@ class MainActivity : Activity() {
 
                     if (apkUrl != null && isNewerVersion(latestTag, currentVersion)) {
                         runOnUiThread {
-                            Toast.makeText(this, "새 업데이트(v$latestTag) 다운로드 중...", Toast.LENGTH_SHORT).show()
+                            showUpdateConfirmDialog(latestTag, apkUrl)
                         }
-                        downloadAndInstallApk(apkUrl, latestTag)
                     }
                 }
                 conn.disconnect()
             } catch (_: Exception) {
             }
         }.start()
+    }
+
+    private fun showUpdateConfirmDialog(latestVersion: String, apkUrl: String) {
+        if (isFinishing || isDestroyed || isUpdateDialogShown) return
+        isUpdateDialogShown = true
+
+        AlertDialog.Builder(this)
+            .setTitle("업데이트 알림")
+            .setMessage("새 버전(v$latestVersion)이 있습니다.\n업데이트하시겠습니까?")
+            .setCancelable(false)
+            .setPositiveButton("예") { dialog, _ ->
+                dialog.dismiss()
+                Toast.makeText(this, "새 업데이트(v$latestVersion) 다운로드 중...", Toast.LENGTH_SHORT).show()
+                Thread {
+                    downloadAndInstallApk(apkUrl, latestVersion)
+                }.start()
+            }
+            .setNegativeButton("아니요") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
     }
 
     private fun downloadAndInstallApk(apkUrl: String, version: String) {
